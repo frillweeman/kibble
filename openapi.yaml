@@ -1,0 +1,358 @@
+openapi: 3.1.0
+info:
+  title: Pet Feeder API
+  version: 1.0.0
+  description: Control and monitor the ESP32-S3 pet feeder.
+
+servers:
+  - url: http://{ip}
+    variables:
+      ip:
+        default: 192.168.0.89
+        description: IP address of the feeder on your local network.
+
+paths:
+  /:
+    get:
+      summary: Web UI
+      description: Serves the static frontend page.
+      responses:
+        "200":
+          description: HTML page.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/status:
+    get:
+      summary: Current status
+      responses:
+        "200":
+          description: Current time, last feed time, and next scheduled feed time.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+
+  /api/schedule:
+    get:
+      summary: Get schedule
+      description: Returns the full daily feed schedule.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ScheduleEntry"
+          description: Array of schedule entries.
+
+    post:
+      summary: Replace schedule
+      description: >
+        Replaces the entire schedule. The new schedule is persisted to LittleFS
+        and takes effect immediately.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/ScheduleEntry"
+            example:
+              - hour: 7
+                minute: 30
+                clicks: 2
+              - hour: 18
+                minute: 0
+                clicks: 1
+      responses:
+        "200":
+          description: Schedule saved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: Malformed JSON or invalid field values.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Failed to persist to LittleFS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/log:
+    get:
+      summary: Feed history
+      description: Returns the last 50 feed events in chronological order.
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LogEntry"
+          description: Array of feed log entries.
+
+    delete:
+      summary: Clear feed log
+      description: Truncates the feed log to an empty array. Cannot be undone.
+      responses:
+        "200":
+          description: Log cleared successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "500":
+          description: Failed to write to LittleFS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/dispense:
+    post:
+      summary: Manual dispense
+      description: >
+        Queues an immediate dispense. Returns instantly with a request `id`; the
+        dispense executes asynchronously on the device. Poll
+        `GET /api/dispense/{id}` for its outcome. The result is also appended to
+        the feed log. Only one request can be queued or running at a time.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                clicks:
+                  type: integer
+                  minimum: 1
+                  default: 1
+                  description: Number of cam-switch presses (portions) to dispense.
+            example:
+              clicks: 2
+      responses:
+        "200":
+          description: Dispense queued successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - type: object
+                    properties:
+                      id:
+                        type: integer
+                        description: Request id; use with GET /api/dispense/{id}.
+                      requested:
+                        type: integer
+                        description: Number of clicks that were queued.
+                      queued:
+                        type: boolean
+                        example: true
+        "409":
+          description: A dispense is already queued or running.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Error"
+                  - type: object
+                    properties:
+                      ok:
+                        type: boolean
+                        example: false
+
+  /api/dispense/{id}:
+    get:
+      summary: Manual dispense result
+      description: >
+        State of a manual dispense request. Only the most recent request is
+        remembered; older ids return 404.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Current state of the request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DispenseResult"
+        "404":
+          description: Unknown or superseded id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/debuglog:
+    get:
+      summary: Diagnostics log
+      description: >
+        Tail of the device's diagnostics log (boot reason, Wi-Fi/NTP events,
+        clock restores, feed activity, periodic heartbeat).
+      parameters:
+        - name: lines
+          in: query
+          schema:
+            type: integer
+            default: 200
+            minimum: 1
+            maximum: 2000
+        - name: file
+          in: query
+          description: "`current` (default) or `old` (the previous rotated log)."
+          schema:
+            type: string
+            enum: [current, old]
+      responses:
+        "200":
+          description: Plain-text log lines, oldest first.
+          content:
+            text/plain:
+              schema:
+                type: string
+    delete:
+      summary: Clear diagnostics log
+      responses:
+        "200":
+          description: Log cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "500":
+          description: Failed to write to LittleFS.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    ScheduleEntry:
+      type: object
+      required: [hour, minute, clicks]
+      properties:
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+          description: Hour of day (24-hour clock).
+        minute:
+          type: integer
+          minimum: 0
+          maximum: 59
+        clicks:
+          type: integer
+          minimum: 1
+          description: Number of portions to dispense.
+      example:
+        hour: 8
+        minute: 0
+        clicks: 2
+
+    LogEntry:
+      type: object
+      properties:
+        ts:
+          type: integer
+          format: int64
+          description: Unix timestamp (UTC) when the feed occurred.
+        clicks:
+          type: integer
+          description: Number of clicks delivered.
+        error:
+          type: string
+          description: >
+            Present only when the dispense failed. Describes the failure reason
+            (e.g. "only 0/2 clicks detected"). Omitted on successful feeds.
+        retryFor:
+          type: integer
+          format: int64
+          description: >
+            Present on a catch-up feed; the scheduled time (Unix, UTC) it is
+            retrying.
+        clock:
+          type: string
+          enum: [approx]
+          description: >
+            Present only when the entry was logged before NTP confirmed the
+            clock (time restored from flash), so `ts` may be behind real time.
+      example:
+        ts: 1746921600
+        clicks: 2
+
+    Status:
+      type: object
+      properties:
+        currentTime:
+          type: string
+          description: Current local time (ISO 8601, no timezone suffix).
+          example: "2026-05-11T08:32:10"
+        lastFeedTime:
+          type: string
+          description: Local time of the most recent feed, or "never".
+          example: "2026-05-11T07:30:00"
+        nextFeedTime:
+          type: string
+          description: Local time of the next scheduled feed, or "never".
+          example: "2026-05-11T18:00:00"
+        clockSource:
+          type: string
+          enum: [ntp, flash, none]
+          description: >
+            `ntp` = time confirmed by NTP; `flash` = restored from the last
+            saved time (approximate, behind real time) until NTP is reachable;
+            `none` = clock unset, scheduled feeds cannot run yet.
+
+    DispenseResult:
+      type: object
+      properties:
+        id:
+          type: integer
+        state:
+          type: string
+          enum: [queued, running, done]
+        requested:
+          type: integer
+        delivered:
+          type: integer
+          description: Clicks detected. Present when state is `done`.
+        error:
+          type: string
+          description: Present when state is `done` and the dispense failed.
+      example:
+        id: 7
+        state: done
+        requested: 2
+        delivered: 2
+
+    Ok:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Invalid entry values"
