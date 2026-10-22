@@ -6,16 +6,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo has two parts that together form one product:
 
-- `nonshitty-pet-feeder/` — the PlatformIO firmware project (ESP32-S3) that runs on the
+- `firmware/` — the PlatformIO firmware project (ESP32-S3) that runs on the
   physical feeder. This is where almost all real work happens.
 - `frontend/index.html` + `openapi.yaml` — reference copies of the web UI and the HTTP API
   contract, kept at the repo root for easy viewing/editing outside the embedded filesystem.
-  `nonshitty-pet-feeder/data/index.html` is a symlink to `frontend/index.html`, so there is
+  `firmware/data/index.html` is a symlink to `frontend/index.html`, so there is
   one file to edit; run `pio run -t uploadfs` to ship it.
 
 ## Build / upload commands
 
-All commands run from `nonshitty-pet-feeder/` (requires PlatformIO Core / `pio` CLI):
+All commands run from `firmware/` (requires PlatformIO Core / `pio` CLI):
 
 ```bash
 pio run                      # compile firmware

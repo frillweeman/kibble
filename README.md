@@ -8,8 +8,8 @@ Wi-Fi outages.
 
 | Path | What it is |
 | --- | --- |
-| `nonshitty-pet-feeder/` | PlatformIO firmware project (ESP32-S3). Almost all real work happens here. |
-| `frontend/index.html` | The web UI (plain HTML/CSS/JS, no build step). `nonshitty-pet-feeder/data/index.html` is a symlink to it. |
+| `firmware/` | PlatformIO firmware project (ESP32-S3). Almost all real work happens here. |
+| `frontend/index.html` | The web UI (plain HTML/CSS/JS, no build step). `firmware/data/index.html` is a symlink to it. |
 | `openapi.yaml` | The HTTP API contract. Keep it in step with `src/webserver.cpp`. |
 | `CLAUDE.md` | Architecture notes for contributors and coding agents. |
 
@@ -19,7 +19,7 @@ Wi-Fi outages.
 2. Create your Wi-Fi credentials file (it is gitignored):
 
    ```bash
-   cd nonshitty-pet-feeder
+   cd firmware
    cp include/secrets.h.example include/secrets.h
    # edit include/secrets.h and set WIFI_SSID / WIFI_PASS
    ```
@@ -29,7 +29,7 @@ Wi-Fi outages.
 
 ## Build and flash
 
-Run from `nonshitty-pet-feeder/`:
+Run from `firmware/`:
 
 ```bash
 pio run                  # compile
